@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import sys
+import argparse
 
 # Register namespace
 ET.register_namespace('', "http://www.opengis.net/kml/2.2")
@@ -7,9 +8,18 @@ ns = {'kml': 'http://www.opengis.net/kml/2.2'}
 
 def finalize_kml(input_file, output_file, remove_points=False):
     print(f"Reading {input_file}...")
-    tree = ET.parse(input_file)
+    try:
+        tree = ET.parse(input_file)
+    except Exception as e:
+        print(f"Error reading {input_file}: {e}")
+        return
+
     root = tree.getroot()
     document = root.find('kml:Document', ns)
+    
+    if document is None:
+        print("Invalid KML: Document not found")
+        return
     
     # Create a new Folder element for the points
     points_folder = ET.Element('Folder')
@@ -56,6 +66,11 @@ def finalize_kml(input_file, output_file, remove_points=False):
     print(f"Written to {output_file}")
 
 if __name__ == "__main__":
-    # Default behavior: Keep points but group them. 
-    # To remove points, change remove_points=True
-    finalize_kml("culled.kml", "final_track.kml", remove_points=False)
+    parser = argparse.ArgumentParser(description="Finalize KML structure for viewing.")
+    parser.add_argument("--input", default="culled.kml", help="Input KML file (default: culled.kml)")
+    parser.add_argument("--output", default="final_track.kml", help="Output KML file (default: final_track.kml)")
+    parser.add_argument("--remove-points", action="store_true", help="Remove points and keep only the path line")
+    
+    args = parser.parse_args()
+    
+    finalize_kml(args.input, args.output, remove_points=args.remove_points)

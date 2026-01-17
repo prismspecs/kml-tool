@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import statistics
+import argparse
 
 # Register namespace
 ET.register_namespace('', "http://www.opengis.net/kml/2.2")
@@ -8,9 +9,19 @@ ns = {'kml': 'http://www.opengis.net/kml/2.2'}
 
 def analyze_kml(file_path):
     print(f"Analyzing {file_path}...")
-    tree = ET.parse(file_path)
+    try:
+        tree = ET.parse(file_path)
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
+        return
+
     root = tree.getroot()
     document = root.find('kml:Document', ns)
+    
+    if document is None:
+        print("Invalid KML: Document not found")
+        return
+
     placemarks = document.findall('kml:Placemark', ns)
     
     timestamps = []
@@ -50,4 +61,9 @@ def analyze_kml(file_path):
     print(f"Intervals <= 60s: {under_60 / len(deltas) * 100:.1f}%")
 
 if __name__ == "__main__":
-    analyze_kml("merged.kml")
+    parser = argparse.ArgumentParser(description="Analyze time intervals in a KML file.")
+    parser.add_argument("--input", default="merged.kml", help="Input KML file (default: merged.kml)")
+    
+    args = parser.parse_args()
+    
+    analyze_kml(args.input)

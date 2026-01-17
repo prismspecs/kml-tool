@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import math
+import argparse
 
 # Register namespace
 ET.register_namespace('', "http://www.opengis.net/kml/2.2")
@@ -24,10 +25,19 @@ def parse_coordinate_string(coord_str):
 
 def cull_kml(input_file, output_file, min_distance_meters=50):
     print(f"Reading {input_file}...")
-    tree = ET.parse(input_file)
+    try:
+        tree = ET.parse(input_file)
+    except Exception as e:
+        print(f"Error reading {input_file}: {e}")
+        return
+
     root = tree.getroot()
     document = root.find('kml:Document', ns)
     
+    if document is None:
+        print("Invalid KML: No Document found")
+        return
+
     # We need to process both individual Placemarks (Points) and the LineString
     placemarks = document.findall('kml:Placemark', ns)
     
@@ -72,8 +82,11 @@ def cull_kml(input_file, output_file, min_distance_meters=50):
                 kept_points.append(pm)
                 last_kept_coords = (lat, lon)
                 
-    print(f"Points kept after {min_distance_meters}m culling: {len(kept_points)}")
-    print(f"Reduction: {(1 - len(kept_points)/len(point_placemarks))*100:.1f}%")
+    if len(point_placemarks) > 0:
+        print(f"Points kept after {min_distance_meters}m culling: {len(kept_points)}")
+        print(f"Reduction: {(1 - len(kept_points)/len(point_placemarks))*100:.1f}%")
+    else:
+        print("No point placemarks found.")
     
     # Update the Document: remove old placemarks, add kept ones
     # We first clear the document of placemarks
@@ -102,5 +115,11 @@ def cull_kml(input_file, output_file, min_distance_meters=50):
     print(f"Written to {output_file}")
 
 if __name__ == "__main__":
-    # You can adjust the distance here (e.g., 50 meters)
-    cull_kml("merged.kml", "culled.kml", min_distance_meters=50)
+    parser = argparse.ArgumentParser(description="Reduce point density in KML file.")
+    parser.add_argument("--input", default="merged.kml", help="Input KML file (default: merged.kml)")
+    parser.add_argument("--output", default="culled.kml", help="Output KML file (default: culled.kml)")
+    parser.add_argument("--distance", type=float, default=50, help="Minimum distance between points in meters (default: 50)")
+    
+    args = parser.parse_args()
+    
+    cull_kml(args.input, args.output, min_distance_meters=args.distance)

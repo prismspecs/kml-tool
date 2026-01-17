@@ -1,5 +1,6 @@
 import os
 import glob
+import argparse
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -11,13 +12,27 @@ def get_text(element, path):
     found = element.find(path, ns)
     return found.text if found is not None else None
 
-def parse_kml_files():
+def parse_kml_files(input_dir, output_file):
     # Ensure output directory exists
-    os.makedirs("output", exist_ok=True)
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     
-    kml_files = glob.glob("input/*.kml")
+    # Check if input is a pattern or a directory
+    if '*' in input_dir:
+        kml_files = glob.glob(input_dir)
+    else:
+        kml_files = glob.glob(os.path.join(input_dir, "*.kml"))
+    
+    # Exclude the output file if it happens to be in the list
+    abs_output = os.path.abspath(output_file)
+    kml_files = [f for f in kml_files if os.path.abspath(f) != abs_output]
     
     print(f"Found files: {kml_files}")
+    
+    if not kml_files:
+        print("No KML files found to merge.")
+        return
 
     unique_points = {} # Key: ID, Value: (timestamp_obj, placemark_element)
     
@@ -27,8 +42,12 @@ def parse_kml_files():
     
     for file_path in kml_files:
         print(f"Processing {file_path}...")
-        tree = ET.parse(file_path)
-        root = tree.getroot()
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+        except ET.ParseError as e:
+            print(f"Error parsing {file_path}: {e}")
+            continue
         
         if template_tree is None:
             template_tree = tree
@@ -119,36 +138,43 @@ def parse_kml_files():
     # To do that, let's re-read the first file to find the original LineString Placemark
     # and use it as a base.
     first_file = kml_files[0]
-    temp_tree = ET.parse(first_file)
-    temp_root = temp_tree.getroot()
-    temp_doc = temp_root.find('kml:Document', ns)
-    temp_pms = temp_doc.findall('kml:Placemark', ns)
-    
-    line_placemark_template = None
-    for pm in temp_pms:
-        if pm.find('kml:LineString', ns) is not None:
-            line_placemark_template = pm
-            break
-            
-    if line_placemark_template is not None:
-        # Update coordinates
-        ls = line_placemark_template.find('kml:LineString', ns)
-        coord_elem = ls.find('kml:coordinates', ns)
-        coord_elem.text = line_string_coords
+    try:
+        temp_tree = ET.parse(first_file)
+        temp_root = temp_tree.getroot()
+        temp_doc = temp_root.find('kml:Document', ns)
+        temp_pms = temp_doc.findall('kml:Placemark', ns)
         
-        # Add to document
-        document.append(line_placemark_template)
-    else:
-        print("Warning: Could not find a template LineString placemark.")
+        line_placemark_template = None
+        for pm in temp_pms:
+            if pm.find('kml:LineString', ns) is not None:
+                line_placemark_template = pm
+                break
+                
+        if line_placemark_template is not None:
+            # Update coordinates
+            ls = line_placemark_template.find('kml:LineString', ns)
+            coord_elem = ls.find('kml:coordinates', ns)
+            coord_elem.text = line_string_coords
+            
+            # Add to document
+            document.append(line_placemark_template)
+        else:
+            print("Warning: Could not find a template LineString placemark.")
+    except Exception as e:
+        print(f"Warning: Could not create template from first file: {e}")
 
     # 2. Add all sorted Point Placemarks
     for dt, pm in sorted_points:
         document.append(pm)
         
     # Write output
-    output_path = "output/merged.kml"
-    template_tree.write(output_path, encoding='UTF-8', xml_declaration=True)
-    print(f"Successfully wrote {output_path}")
+    template_tree.write(output_file, encoding='UTF-8', xml_declaration=True)
+    print(f"Successfully wrote {output_file}")
 
 if __name__ == "__main__":
-    parse_kml_files()
+    parser = argparse.ArgumentParser(description="Merge multiple KML files into a single track.")
+    parser.add_argument("--input", default="input", help="Directory containing KML files or glob pattern (default: 'input')")
+    parser.add_argument("--output", default="output/merged.kml", help="Path to output KML file (default: 'output/merged.kml')")
+    
+    args = parser.parse_args()
+    parse_kml_files(args.input, args.output)
